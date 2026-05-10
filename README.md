@@ -1,6 +1,6 @@
 # EFT DMA Radar
 
-> **⚠️ This project is no longer actively maintained.**
+> **⚠️ This project is NOT the original, this is MY version**
 > No further updates, bug fixes, or support will be provided.
 
 ## What is this?
