@@ -1,7 +1,7 @@
 # EFT DMA Radar
 
 > **⚠️ This project is NOT the original, this is MY version**
-> updates, bug fixes will be done at my discretion.
+
 
 ## What is this?
 - This is an up-to-date build of Lone DMA EFT Radar. This is a standalone copy of the software with *No Restrictions*.
