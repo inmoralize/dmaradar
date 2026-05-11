@@ -424,10 +424,13 @@ namespace eft_dma_radar
             if (args == null || args.Length == 0)
                 return false;
 
-            if (args.Any(arg => arg.Equals("-diag", StringComparison.OrdinalIgnoreCase) ||
-                               arg.Equals("-maintenance", StringComparison.OrdinalIgnoreCase)))
+            bool isDiag = args.Any(arg => arg.Equals("-diag", StringComparison.OrdinalIgnoreCase) ||
+                                         arg.Equals("-maintenance", StringComparison.OrdinalIgnoreCase));
+            bool isExport = args.Any(arg => arg.Equals("-export", StringComparison.OrdinalIgnoreCase));
+
+            if (isDiag || isExport)
             {
-                PrintDiagnostics();
+                PrintDiagnostics(isExport);
                 return true;
             }
 
@@ -437,62 +440,67 @@ namespace eft_dma_radar
         /// <summary>
         /// Print diagnostic information to the console and exit.
         /// </summary>
-        private static void PrintDiagnostics()
+        private static void PrintDiagnostics(bool exportOnly = false)
         {
-            Log.WriteLine("--- DIAGNOSTICS REPORT ---");
-            Log.WriteLine($"App Version: {Version}");
-            Log.WriteLine($"Config Path: {ConfigPath.FullName}");
-            Log.WriteLine($"Custom Config Path: {CustomConfigPath.FullName}");
-            Log.WriteLine($"IL2CPP Health: {eft_dma_radar.Tarkov.Unity.IL2CPP.Il2CppDumper.HealthSummary}");
+            var report = new Dictionary<string, object>
+            {
+                { "Version", Version },
+                { "ConfigPath", ConfigPath.FullName },
+                { "CustomConfigPath", CustomConfigPath.FullName },
+                { "IL2CPPHealth", eft_dma_radar.Tarkov.Unity.IL2CPP.Il2CppDumper.HealthSummary },
+                { "Configs", new List<string>() },
+                { "IL2CPPCache", null },
+                { "MapData", null }
+            };
+
+            if (!exportOnly) Log.WriteLine("--- DIAGNOSTICS REPORT ---");
 
             try
             {
                 var configs = Directory.GetFiles(CustomConfigPath.FullName, "*.json");
-                Log.WriteLine($"Found {configs.Length} configurations.");
                 foreach (var config in configs)
                 {
-                    Log.WriteLine($"  - {Path.GetFileName(config)}");
+                    ((List<string>)report["Configs"]).Add(Path.GetFileName(config));
+                    if (!exportOnly) Log.WriteLine($"  - {Path.GetFileName(config)}");
                 }
             }
-            catch (Exception ex)
-            {
-                Log.WriteLine($"Error listing configs: {ex.Message}");
-            }
+            catch (Exception ex) { if (!exportOnly) Log.WriteLine($"Error listing configs: {ex.Message}"); }
 
-            // Check for IL2CPP cache
             string il2cppCachePath = Path.Combine(ConfigPath.FullName, "il2cpp_offsets.json");
             if (File.Exists(il2cppCachePath))
             {
-                Log.WriteLine($"IL2CPP Cache: FOUND ({new FileInfo(il2cppCachePath).Length} bytes)");
-                try
-                {
-                    var lastWrite = File.GetLastWriteTime(il2cppCachePath);
-                    Log.WriteLine($"IL2CPP Cache Last Modified: {lastWrite}");
-                }
-                catch { }
+                var info = new FileInfo(il2cppCachePath);
+                report["IL2CPPCache"] = new { Found = true, Size = info.Length, LastModified = File.GetLastWriteTime(il2cppCachePath) };
+                if (!exportOnly) Log.WriteLine($"IL2CPP Cache: FOUND ({info.Length} bytes)");
             }
             else
             {
-                Log.WriteLine("IL2CPP Cache: NOT FOUND");
+                report["IL2CPPCache"] = new { Found = false };
+                if (!exportOnly) Log.WriteLine("IL2CPP Cache: NOT FOUND");
             }
 
-            // Check for Map data
             string mapPath = Path.Combine(Environment.CurrentDirectory, "Maps");
             if (Directory.Exists(mapPath))
             {
                 var mapFiles = Directory.GetFiles(mapPath, "*.json", SearchOption.AllDirectories);
-                Log.WriteLine($"Map Data: FOUND ({mapFiles.Length} files)");
+                report["MapData"] = new { Found = true, Count = mapFiles.Length };
+                if (!exportOnly) Log.WriteLine($"Map Data: FOUND ({mapFiles.Length} files)");
             }
             else
             {
-                Log.WriteLine("Map Data: MISSING (Maps directory not found)");
+                report["MapData"] = new { Found = false };
+                if (!exportOnly) Log.WriteLine("Map Data: MISSING (Maps directory not found)");
             }
 
-            Log.WriteLine("--- END OF REPORT ---");
-            Log.WriteLine("Press any key to exit...");
-            if (Environment.UserInteractive)
+            string outputPath = Path.Combine(ConfigPath.FullName, "diag_report.json");
+            File.WriteAllText(outputPath, JsonSerializer.Serialize(report, new JsonSerializerOptions { WriteIndented = true }));
+            
+            if (!exportOnly)
             {
-                Console.ReadKey();
+                Log.WriteLine($"--- END OF REPORT ---");
+                Log.WriteLine($"Report exported to: {outputPath}");
+                Log.WriteLine("Press any key to exit...");
+                if (Environment.UserInteractive) Console.ReadKey();
             }
         }
 

@@ -1,0 +1,121 @@
+name: Build & Release
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write   # needed to create releases and upload assets
+
+jobs:
+  build-and-release:
+    name: Build, Publish & Release
+    runs-on: windows-latest
+
+    steps:
+      # ── Checkout ────────────────────────────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history so tags work correctly
+
+      # ── Setup .NET 10 ────────────────────────────────────────────────────────
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.x'
+
+      # ── Restore NuGet packages ────────────────────────────────────────────────
+      - name: Restore dependencies
+        run: dotnet restore src/eft-dma-radar.csproj
+        working-directory: ${{ github.workspace }}
+
+      # ── Publish (self-contained, single output folder) ────────────────────────
+      - name: Publish (win-x64, Release)
+        run: |
+          dotnet publish src/eft-dma-radar.csproj `
+            --configuration Release `
+            --runtime win-x64 `
+            --self-contained false `
+            --output publish/eft-dma-radar `
+            -p:DebugType=none `
+            -p:PublishSingleFile=false `
+            -p:VersionPrefix=1.0.${{ github.run_number }}
+        working-directory: ${{ github.workspace }}
+
+      # ── Copy bundled native DLLs into the publish folder ────────────────────
+      #    (These are committed to the repo root since they are proprietary binaries)
+      - name: Copy native DLLs
+        shell: pwsh
+        run: |
+          $nativeDlls = @(
+            "vmm.dll",
+            "leechcore.dll",
+            "leechcore_driver.dll",
+            "FTD3XX.dll",
+            "dbghelp.dll",
+            "symsrv.dll",
+            "tinylz4.dll",
+            "vcruntime140.dll",
+            "VmmSharp.dll"
+          )
+          $src  = "${{ github.workspace }}"
+          $dest = "${{ github.workspace }}/publish/eft-dma-radar"
+          foreach ($dll in $nativeDlls) {
+            $path = Join-Path $src $dll
+            if (Test-Path $path) {
+              Copy-Item -Path $path -Destination $dest -Force
+              Write-Host "Copied $dll"
+            } else {
+              Write-Warning "$dll not found in repo root – skipping"
+            }
+          }
+
+      # ── Zip the publish folder ────────────────────────────────────────────────
+      - name: Zip publish output
+        shell: pwsh
+        run: |
+          $dest = "${{ github.workspace }}/publish"
+          Compress-Archive `
+            -Path "$dest/eft-dma-radar/*" `
+            -DestinationPath "$dest/eft-dma-radar.zip" `
+            -Force
+          Write-Host "Archive created: $dest/eft-dma-radar.zip"
+
+      # ── Derive a clean version/tag ───────────────────────────────────────────
+      - name: Compute release tag
+        id: tag
+        shell: pwsh
+        run: |
+          $date  = Get-Date -Format "yyyy.MM.dd"
+          $short = "${{ github.sha }}".Substring(0, 7)
+          $tag   = "v$date-$short"
+          echo "TAG=$tag" >> $env:GITHUB_OUTPUT
+          echo "RELEASE_NAME=EFT DMA Radar $tag" >> $env:GITHUB_OUTPUT
+
+      # ── Create GitHub Release & upload zip ───────────────────────────────────
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.TAG }}
+          name: ${{ steps.tag.outputs.RELEASE_NAME }}
+          body: |
+            Automated release built from commit `${{ github.sha }}`.
+
+            ### What's included
+            - `eft-dma-radar.exe` — main radar application
+            - All required native DLLs (`vmm.dll`, `leechcore.dll`, etc.)
+            - Maps and resource files
+
+            ### How to use
+            1. Extract the zip on your **second (target) PC**.
+            2. Run `eft-dma-radar.exe` as Administrator.
+            3. Optionally run with `-diag` flag to verify connectivity before playing.
+
+            ### Commit
+            ${{ github.event.head_commit.message }}
+          draft: false
+          prerelease: false
+          files: |
+            publish/eft-dma-radar.zip
