@@ -5,6 +5,27 @@ namespace eft_dma_radar.Tarkov.Unity.IL2CPP
     public static partial class Il2CppDumper
     {
         // ── Schema ───────────────────────────────────────────────────────────────
+        //
+        // PATCH-DAY GUIDE
+        // ────────────────────────────────────────────────────────────────────────
+        // When EFT updates, this schema drives the automatic re-scan that rewrites
+        // the `public static uint` fields in SDK.cs to their new values.
+        //
+        // AUTOMATICALLY UPDATED (by IL2CPP dumper on first run after a patch):
+        //   • Every struct registered here via C()/F()/M() helpers.
+        //
+        // MANUALLY PINNED (must be updated by hand after a patch):
+        //   • `public const uint` fields in SDK.cs — these are verified-stable
+        //     offsets inside value-type structs where IL2CPP field scanning is
+        //     unreliable (e.g. SightComponent, SightInterface, MatchingProgress).
+        //   • Offsets.Special.*_TypeIndex values — derive from the MDToken of the
+        //     target class: TypeIndex = (mdToken & 0x00FFFFFF) - 1.
+        //     Use Il2CppDumper CLI or dnSpy to read the token after a patch.
+        //   • Offsets.Special.TypeInfoTableRva — re-scan with Il2CppDumper if the
+        //     binary changes enough to shift the table.
+        //   • AssemblyCSharp.TypeCount — update whenever class count changes.
+        //   • Enums.* — verify values after a patch if behaviour changes.
+        // ────────────────────────────────────────────────────────────────────────
 
         private enum FieldKind { Normal, MethodRva }
 
@@ -630,6 +651,21 @@ namespace eft_dma_radar.Tarkov.Unity.IL2CPP
             C("MatchingProgressView", [
                 F("_matchingProgress"),
             ], ti: Offsets.Special.MatchingProgressView_TypeIndex),
+
+            // ── Previously untracked structs — now auto-updated each patch ─────
+
+            // QuestConditionsContainer — condition list container
+            C("QuestConditionsContainer", [F("ConditionsList")]),
+
+            // EftScreenManager — singleton (static _instance field)
+            C("EftScreenManager", [F("_instance")], s: true),
+
+            // BSGGameSetting / BSGGameSettingValueClass — settings system
+            C("BSGGameSetting", [F("ValueClass")]),
+            C("BSGGameSettingValueClass", [F("Value")]),
+
+            // SlotViewsContainer — dictionary of slot views on the player body
+            C("SlotViewsContainer", [F("Dict")]),
         ];
     }
 }
